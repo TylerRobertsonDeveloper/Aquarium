@@ -7,8 +7,8 @@
  *****************************************************************************/
  
 const int BYPASS_SAFETY_PIN  = 7;
-const int MOMENTARY_DOWN_PIN = 5;
 const int MOMENTARY_UP_PIN   = 6;
+const int MOMENTARY_DOWN_PIN = 5;
 const int SWITCH_GND_PIN     = 4;
 
 const int MOTOR_PULSE_SIG_PIN     = 12;
@@ -16,8 +16,9 @@ const int MOTOR_DIRECTION_GND_PIN = 11;
 const int MOTOR_DIRECTION_SIG_PIN = 10;
 const int MOTOR_PULSE_GND_PIN     = 9;
 
-const int APEX_UP_PIN = 10;
-const int APEX_DOWN_PIN = 9;
+const int APEX_UP_PIN   = A5;
+const int APEX_DOWN_PIN = A4;
+const int APEX_GND_PIN  = A2;
 
 //-----------------------------------------------------------------------------
 unsigned long usElapsedSince( unsigned long us )
@@ -64,24 +65,28 @@ unsigned long usPerStep( unsigned long stepsPerSecond )
 
 struct SwitchInput
 {
-  unsigned long debounceStartMS;
+  unsigned long debounceStartMs;
+  unsigned long debounceTimeMs;
   int pin;
   int state;
   const char *name;
   bool justTriggered;
   bool justReleased;
   bool isActive;
+  bool activeLow;
   
-  void Initialize( unsigned int _pin, const char *_name )
+  void Initialize( unsigned int _pin, const char *_name, int inputMode, bool _activeLow, unsigned long _debounceTimeMs )
   {
     pin = _pin;
     name = _name;
-    pinMode( _pin, INPUT_PULLUP );
-    state = HIGH;
-    debounceStartMS = 0;
+    pinMode( _pin, inputMode );
+    state = _activeLow ? HIGH : LOW;
+    debounceStartMs = 0;
     justReleased = false;
     justTriggered = false;
     isActive = false;
+    activeLow = _activeLow;
+    debounceTimeMs = _debounceTimeMs;
   }
   
   void DebounceInput()
@@ -93,27 +98,27 @@ struct SwitchInput
     int tmpState = digitalRead( pin );  
     if( tmpState != state )
     {
-      if( debounceStartMS == 0 )
+      if( debounceStartMs == 0 )
       {
-        debounceStartMS = millis();
+        debounceStartMs = millis();
       }
-      else if( msElapsedSince( debounceStartMS ) > 50 )
+      else if( msElapsedSince( debounceStartMs ) > debounceTimeMs )
       {
         state = tmpState;
-        debounceStartMS = 0;
+        debounceStartMs = 0;
         
+        isActive = activeLow ^ state;
+        justTriggered = isActive;
+        justReleased = !isActive;
+
         Serial.print( name );
-        if( state == HIGH )
+        if( isActive )
         {
-          isActive = false;
-          justReleased = true;
-          Serial.println( ": Released" );
+          Serial.println( justReleased ? ": Released" : ": Triggered" );
         }
         else
         {
-          isActive = true;
-          justTriggered = true;
-          Serial.println( ": Triggered" );
+          Serial.println( justTriggered ? ": Triggered" : ": Released" );
         }
       }
     }
@@ -123,6 +128,8 @@ struct SwitchInput
 SwitchInput momentaryUp;
 SwitchInput momentaryDown;
 SwitchInput bypassSafety;
+SwitchInput apexUp;
+SwitchInput apexDown;
 
 unsigned long startTimeMs = 0;
 unsigned long endTimeMs = 0;
@@ -141,7 +148,7 @@ const unsigned long rampIntervalUs = 8000;
 const long stepsPerRotation = 200;
 const long maxStepsPerSecond = 700;
 
-const long maxPos = 11750;
+const long maxPos = 11875;
 const long minPos = 0;
 
 void setup()
@@ -149,9 +156,12 @@ void setup()
   Serial.begin(9600);
   Serial.println( "Initializing..." );
   
-  momentaryUp.Initialize( MOMENTARY_UP_PIN, "Momentary Up" );
-  momentaryDown.Initialize( MOMENTARY_DOWN_PIN, "Momentary Down" );
-  bypassSafety.Initialize( BYPASS_SAFETY_PIN, "Bypass Pin" );
+  momentaryUp.Initialize(   MOMENTARY_UP_PIN,   "Momentary Up",   INPUT_PULLUP, true, 50 );
+  momentaryDown.Initialize( MOMENTARY_DOWN_PIN, "Momentary Down", INPUT_PULLUP, true, 50 );
+  bypassSafety.Initialize(  BYPASS_SAFETY_PIN,  "Bypass Pin",     INPUT_PULLUP, true, 50 );
+  apexUp.Initialize(        APEX_UP_PIN,        "Apex Up",        INPUT,        false, 1000 );
+  apexDown.Initialize(      APEX_DOWN_PIN,      "Apex DOWN",      INPUT,        false, 1000 );
+  
   
   pinMode( MOTOR_DIRECTION_SIG_PIN, OUTPUT );
   pinMode( MOTOR_DIRECTION_GND_PIN, OUTPUT );
@@ -159,9 +169,15 @@ void setup()
   pinMode( MOTOR_PULSE_GND_PIN,     OUTPUT );
   pinMode( SWITCH_GND_PIN,          OUTPUT );
 
+  pinMode( APEX_UP_PIN,   INPUT );
+  pinMode( APEX_DOWN_PIN, INPUT );
+  pinMode( APEX_GND_PIN, OUTPUT );
+
+  // Ground pins
   digitalWrite( MOTOR_DIRECTION_GND_PIN, LOW );
   digitalWrite( MOTOR_PULSE_GND_PIN, LOW );
   digitalWrite( SWITCH_GND_PIN, LOW );
+  digitalWrite( APEX_GND_PIN, LOW );
 
   pos = 0;
   motorDir = 0;
@@ -176,7 +192,7 @@ void setup()
 }
 
 // Warning: This does raw low level register manipulation and bypasses ardiuino crap for speed. 
-// It ignores the Pulse pins from the top!
+// It ignores the pulse pin defined at the top!
 void Pulse( int sps )
 {
   // Pulse
@@ -245,22 +261,27 @@ void loop()
   momentaryDown.DebounceInput();
   bypassSafety.DebounceInput();
 
-  if( momentaryUp.isActive && momentaryDown.isActive )
+  apexUp.DebounceInput();
+  apexDown.DebounceInput();
+
+  if( (momentaryUp.isActive && momentaryDown.isActive) ||
+      (apexUp.isActive && apexDown.isActive) )
   {
     // Nope
+    Serial.println( "Two at once!" );
     return;
   }
 
   if( bypassSafety.isActive )
   {
-    if( momentaryUp.isActive )
+    if( momentaryUp.isActive || apexUp.isActive )
     {
       digitalWrite( MOTOR_DIRECTION_SIG_PIN, 0 );
       motorDir = 1;
       Pulse( 100 );
     }
   
-    if( momentaryDown.isActive )
+    if( momentaryDown.isActive || apexDown.isActive )
     {
       digitalWrite( MOTOR_DIRECTION_SIG_PIN, 1 );
       motorDir = -1;
@@ -271,7 +292,7 @@ void loop()
     return;
   }
   
-  if( momentaryUp.isActive && motorDir == 0  )
+  if( (momentaryUp.isActive || apexUp.isActive) && motorDir == 0  )
   {
     if( pos != maxPos )
     {
@@ -284,7 +305,7 @@ void loop()
     digitalWrite( MOTOR_DIRECTION_SIG_PIN, 0 );
   }
 
-  if( momentaryDown.isActive && motorDir == 0 )
+  if( (momentaryDown.isActive || apexDown.isActive) && motorDir == 0 )
   {
     if( pos != minPos )
     {
@@ -297,8 +318,8 @@ void loop()
     digitalWrite( MOTOR_DIRECTION_SIG_PIN, 1 );
   }
 
-  if( (momentaryUp.isActive && motorDir != -1) ||
-      (momentaryDown.isActive && motorDir != 1) )
+  if( ((momentaryUp.isActive || apexUp.isActive) && motorDir != -1) ||
+      ((momentaryDown.isActive || apexDown.isActive) && motorDir != 1) )
   {
     rampStep = 1;
   }
