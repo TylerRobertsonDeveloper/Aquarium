@@ -5,6 +5,14 @@
  * Total travel of hydraulics is 12.00 inches
  * 
  *****************************************************************************/
+
+#define USE_APEX_INPUT 0
+
+#if USE_APEX_INPUT 
+  #define APEX_INPUT_ONLY( x ) x
+#else
+  #define APEX_INPUT_ONLY( x )
+#endif
  
 const int BYPASS_SAFETY_PIN  = 7;
 const int MOMENTARY_UP_PIN   = 6;
@@ -148,7 +156,7 @@ const unsigned long rampIntervalUs = 8000;
 const long stepsPerRotation = 200;
 const long maxStepsPerSecond = 700;
 
-const long maxPos = 11875;
+const long maxPos = 12000;
 const long minPos = 0;
 
 void setup()
@@ -228,6 +236,14 @@ void PrintDebug()
     while( Serial.available() ) Serial.read();
     Serial.print( "Bypass Safety: " );
     Serial.print( bypassSafety.isActive ? "true" : "false" );
+
+    Serial.print( "Apex Up: " );
+    Serial.print( apexUp.isActive ? "true" : "false" );
+
+    Serial.print( "\tApex Down: " );
+    Serial.print( apexDown.isActive ? "true" : "false" );
+
+    
     Serial.print( "\tSps " );
     Serial.print( stepsPerSecond );
     Serial.print( "\tPos: " );
@@ -264,8 +280,7 @@ void loop()
   apexUp.DebounceInput();
   apexDown.DebounceInput();
 
-  if( (momentaryUp.isActive && momentaryDown.isActive) ||
-      (apexUp.isActive && apexDown.isActive) )
+  if( (momentaryUp.isActive && momentaryDown.isActive) APEX_INPUT_ONLY(|| (apexUp.isActive && apexDown.isActive)) )
   {
     // Nope
     Serial.println( "Two at once!" );
@@ -274,14 +289,14 @@ void loop()
 
   if( bypassSafety.isActive )
   {
-    if( momentaryUp.isActive || apexUp.isActive )
+    if( momentaryUp.isActive )
     {
       digitalWrite( MOTOR_DIRECTION_SIG_PIN, 0 );
       motorDir = 1;
       Pulse( 100 );
     }
   
-    if( momentaryDown.isActive || apexDown.isActive )
+    if( momentaryDown.isActive )
     {
       digitalWrite( MOTOR_DIRECTION_SIG_PIN, 1 );
       motorDir = -1;
@@ -292,7 +307,7 @@ void loop()
     return;
   }
   
-  if( (momentaryUp.isActive || apexUp.isActive) && motorDir == 0  )
+  if( (momentaryUp.isActive APEX_INPUT_ONLY(|| apexUp.isActive)) && motorDir == 0  )
   {
     if( pos != maxPos )
     {
@@ -305,7 +320,7 @@ void loop()
     digitalWrite( MOTOR_DIRECTION_SIG_PIN, 0 );
   }
 
-  if( (momentaryDown.isActive || apexDown.isActive) && motorDir == 0 )
+  if( (momentaryDown.isActive APEX_INPUT_ONLY(|| apexDown.isActive)) && motorDir == 0 )
   {
     if( pos != minPos )
     {
@@ -318,8 +333,8 @@ void loop()
     digitalWrite( MOTOR_DIRECTION_SIG_PIN, 1 );
   }
 
-  if( ((momentaryUp.isActive || apexUp.isActive) && motorDir != -1) ||
-      ((momentaryDown.isActive || apexDown.isActive) && motorDir != 1) )
+  if( ((momentaryUp.isActive APEX_INPUT_ONLY(|| apexUp.isActive)) && motorDir != -1) ||
+      ((momentaryDown.isActive APEX_INPUT_ONLY(|| apexDown.isActive)) && motorDir != 1) )
   {
     rampStep = 1;
   }
@@ -374,6 +389,6 @@ void loop()
   }
 
   Pulse( stepsPerSecond );
-
+  
   PrintDebug();
 }
