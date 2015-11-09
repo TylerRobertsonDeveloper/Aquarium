@@ -231,29 +231,34 @@ void Pulse( int sps )
 
 void PrintDebug()
 {
+  // Allow anything to trigger the debug dump
   if( Serial.available() )
   {
     while( Serial.available() ) Serial.read();
     Serial.print( "Bypass Safety: " );
     Serial.print( bypassSafety.isActive ? "true" : "false" );
 
-    Serial.print( "Apex Up: " );
+    Serial.print( "\tApex Up: " );
     Serial.print( apexUp.isActive ? "true" : "false" );
 
     Serial.print( "\tApex Down: " );
     Serial.print( apexDown.isActive ? "true" : "false" );
 
-    
     Serial.print( "\tSps " );
     Serial.print( stepsPerSecond );
+
     Serial.print( "\tPos: " );
     Serial.print( pos );
+    
     Serial.print( "\tStepCount: " );
     Serial.print( stepCount );
+    
     Serial.print( "\tRotations: " );
     Serial.print( ((float)stepCount) / ((float)stepsPerRotation) );
+    
     Serial.print( "\tMotorDir: " );
     Serial.print( motorDir );
+    
     Serial.print( "\tElapsed: " );
     if( endTimeMs > startTimeMs )
     {
@@ -276,17 +281,26 @@ void loop()
   momentaryUp.DebounceInput();
   momentaryDown.DebounceInput();
   bypassSafety.DebounceInput();
-
   apexUp.DebounceInput();
   apexDown.DebounceInput();
 
-  if( (momentaryUp.isActive && momentaryDown.isActive) APEX_INPUT_ONLY(|| (apexUp.isActive && apexDown.isActive)) )
+  // Check if more than two switches are active at once (means likely something bad has happened)
+  unsigned int inputBits = 0;
+  inputBits |= momentaryUp.isActive * (1 << 0 );
+  inputBits |= momentaryDown.isActive * ( 1 << 1 );
+  #if USE_APEX_INPUTS
+  inputBits |= apexUp.isActive * (1 << 2);
+  inputBits |= apexDown.isActive * (1 << 3 );
+  #endif
+
+  if( inputBits && (inputBits & (inputBits-1)) )
   {
     // Nope
-    Serial.println( "Two at once!" );
+    Serial.println( "Two (or more) at once!" );
     return;
   }
 
+  // Safety override
   if( bypassSafety.isActive )
   {
     if( momentaryUp.isActive )
