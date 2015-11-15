@@ -154,7 +154,7 @@ long rampStep = 0;
 const unsigned long rampIntervalUs = 8000;
 
 const long stepsPerRotation = 200;
-const long maxStepsPerSecond = 700;
+const long maxStepsPerSecond = 500;
 
 const long maxPos = 12000;
 const long minPos = 0;
@@ -277,7 +277,7 @@ unsigned long dbgTime = 0;
 
 void loop()
 {
-  // Deboune inputs
+  // Debounce inputs
   momentaryUp.DebounceInput();
   momentaryDown.DebounceInput();
   bypassSafety.DebounceInput();
@@ -300,7 +300,7 @@ void loop()
   
   if( twoAtOnce )
   {
-    rampStep = -1;  // Simma down naw
+    rampStep = -1;  // Simma down now
   }
   else
   {
