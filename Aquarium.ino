@@ -6,7 +6,7 @@
  * 
  *****************************************************************************/
 
-#define USE_APEX_INPUT 0
+#define USE_APEX_INPUT 1
 
 #if USE_APEX_INPUT 
   #define APEX_INPUT_ONLY( x ) x
@@ -284,79 +284,84 @@ void loop()
   apexUp.DebounceInput();
   apexDown.DebounceInput();
 
+  // Reset as minPos
+  if( bypassSafety.justReleased )
+  {
+    pos = minPos;
+  }
+
   // Check if more than two switches are active at once (means likely something bad has happened)
   unsigned int inputBits = 0;
   inputBits |= momentaryUp.isActive * (1 << 0 );
   inputBits |= momentaryDown.isActive * ( 1 << 1 );
-  #if USE_APEX_INPUTS
   inputBits |= apexUp.isActive * (1 << 2);
   inputBits |= apexDown.isActive * (1 << 3 );
-  #endif
-
-  if( inputBits && (inputBits & (inputBits-1)) )
-  {
-    // Nope
-    Serial.println( "Two (or more) at once!" );
-    return;
-  }
-
-  // Safety override
-  if( bypassSafety.isActive )
-  {
-    if( momentaryUp.isActive )
-    {
-      digitalWrite( MOTOR_DIRECTION_SIG_PIN, 0 );
-      motorDir = 1;
-      Pulse( 100 );
-    }
+  bool twoAtOnce = inputBits && (inputBits & (inputBits-1));
   
-    if( momentaryDown.isActive )
-    {
-      digitalWrite( MOTOR_DIRECTION_SIG_PIN, 1 );
-      motorDir = -1;
-      Pulse( 100 );
-    }
-
-    PrintDebug();
-    return;
-  }
-  
-  if( (momentaryUp.isActive APEX_INPUT_ONLY(|| apexUp.isActive)) && motorDir == 0  )
+  if( twoAtOnce )
   {
-    if( pos != maxPos )
-    {
-      startTimeMs = millis();
-      endTimeMs = 0;
-      stepCount = 0;     
-    }
-    
-    motorDir = 1;
-    digitalWrite( MOTOR_DIRECTION_SIG_PIN, 0 );
-  }
-
-  if( (momentaryDown.isActive APEX_INPUT_ONLY(|| apexDown.isActive)) && motorDir == 0 )
-  {
-    if( pos != minPos )
-    {
-      startTimeMs = millis();
-      endTimeMs = 0;
-      stepCount = 0;
-    }
-    
-    motorDir = -1;
-    digitalWrite( MOTOR_DIRECTION_SIG_PIN, 1 );
-  }
-
-  if( ((momentaryUp.isActive APEX_INPUT_ONLY(|| apexUp.isActive)) && motorDir != -1) ||
-      ((momentaryDown.isActive APEX_INPUT_ONLY(|| apexDown.isActive)) && motorDir != 1) )
-  {
-    rampStep = 1;
+    rampStep = -1;  // Simma down naw
   }
   else
   {
-    rampStep = -1;
-  }
+    // Safety override
+    if( bypassSafety.isActive )
+    {
+      if( momentaryUp.isActive )
+      {
+        digitalWrite( MOTOR_DIRECTION_SIG_PIN, 0 );
+        motorDir = 1;
+        Pulse( 100 );
+      }
+    
+      if( momentaryDown.isActive )
+      {
+        digitalWrite( MOTOR_DIRECTION_SIG_PIN, 1 );
+        motorDir = -1;
+        Pulse( 100 );
+      }
+    
+      PrintDebug();
+      return;
+    }
 
+    if( (momentaryUp.isActive APEX_INPUT_ONLY(|| apexUp.isActive)) && motorDir == 0  )
+    {
+      if( pos != maxPos )
+      {
+        startTimeMs = millis();
+        endTimeMs = 0;
+        stepCount = 0;     
+      }
+      
+      motorDir = 1;
+      digitalWrite( MOTOR_DIRECTION_SIG_PIN, 0 );
+    }
+
+    if( (momentaryDown.isActive APEX_INPUT_ONLY(|| apexDown.isActive)) && motorDir == 0 )
+    {
+      if( pos != minPos )
+      {
+        startTimeMs = millis();
+        endTimeMs = 0;
+        stepCount = 0;
+      }
+      
+      motorDir = -1;
+      digitalWrite( MOTOR_DIRECTION_SIG_PIN, 1 );
+    }
+    
+    if( ((momentaryUp.isActive APEX_INPUT_ONLY(|| apexUp.isActive)) && motorDir != -1) ||
+        ((momentaryDown.isActive APEX_INPUT_ONLY(|| apexDown.isActive)) && motorDir != 1) )
+    {
+      rampStep = 1;
+    }
+    else
+    {
+      rampStep = -1;
+    }
+  }
+  
   if( usElapsedSince( lastRampStepTimeUs ) > rampIntervalUs )
   {
     lastRampStepTimeUs = micros();
