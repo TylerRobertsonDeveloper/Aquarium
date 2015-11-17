@@ -144,6 +144,7 @@ unsigned long endTimeMs = 0;
 unsigned long dbgOutputTimeMs = 0;
 unsigned long lastRampStepTimeUs = 0;
 unsigned long lastStepTimeUs = 0;
+unsigned long lastResetTimeMs = 0;
 
 long pos = 0;
 long motorDir = 0;
@@ -187,7 +188,7 @@ void setup()
   digitalWrite( SWITCH_GND_PIN, LOW );
   digitalWrite( APEX_GND_PIN, LOW );
 
-  pos = 0;
+  pos = maxPos;
   motorDir = 0;
   rampStep = 0;
   lastRampStepTimeUs = 0;
@@ -284,10 +285,25 @@ void loop()
   apexUp.DebounceInput();
   apexDown.DebounceInput();
 
-  // Reset as minPos
+  // Reset if needed
   if( bypassSafety.justReleased )
   {
-    pos = minPos;
+    if( msElapsedSince( lastResetTimeMs ) < 5000 )
+    {
+      // If bypass safety is toggled off twice in 2 seconds then reset as minPos
+      pos = minPos;
+      Serial.print( "Setting pos to min pos: " );
+    }
+    else
+    {
+      // Default reset assumes tank is at the heighest point
+      pos = maxPos;
+      Serial.print( "Setting pos to max pos: " );
+    }
+
+    Serial.println( pos );
+
+    lastResetTimeMs = millis();
   }
 
   // Check if more than two switches are active at once (means likely something bad has happened)
@@ -296,9 +312,9 @@ void loop()
   inputBits |= momentaryDown.isActive * ( 1 << 1 );
   inputBits |= apexUp.isActive * (1 << 2);
   inputBits |= apexDown.isActive * (1 << 3 );
-  bool twoAtOnce = inputBits && (inputBits & (inputBits-1));
+  bool moreThanOneActive = inputBits && (inputBits & (inputBits-1));
   
-  if( twoAtOnce )
+  if( moreThanOneActive )
   {
     rampStep = -1;  // Simma down now
   }
