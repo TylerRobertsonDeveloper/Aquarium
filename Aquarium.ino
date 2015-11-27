@@ -119,15 +119,15 @@ struct SwitchInput
         justTriggered = isActive;
         justReleased = !isActive;
 
-        Serial.print( name );
-        if( isActive )
-        {
-          Serial.println( justReleased ? ": Released" : ": Triggered" );
-        }
-        else
-        {
-          Serial.println( justTriggered ? ": Triggered" : ": Released" );
-        }
+//        Serial.print( name );
+//        if( isActive )
+//        {
+//          Serial.println( justReleased ? ": Released" : ": Triggered" );
+//        }
+//        else
+//        {
+//          Serial.println( justTriggered ? ": Triggered" : ": Released" );
+//        }
       }
     }
   }
@@ -155,10 +155,10 @@ long rampStep = 0;
 const unsigned long rampIntervalUs = 8000;
 
 const long stepsPerRotation = 200;
-const long maxStepsPerSecond = 500;
+const long maxStepsPerSecond = 200;
 
 const long maxPos = 12000;
-const long minPos = 0;
+const long minPos = 100;
 
 void setup()
 {
